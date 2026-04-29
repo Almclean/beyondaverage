@@ -11,12 +11,10 @@ import {
   Info,
   Map as MapIcon,
   Moon,
-  Search,
-  Share2,
   Sun,
 } from 'lucide-react'
 import './App.css'
-import { datasets, searchHits, type Dataset, type LocalSearchHit, type MetricKey } from './data'
+import { datasets, type Dataset, type MetricKey, type RegionValue } from './data'
 import { boxSummary, densityCurve, distributionSummary } from './stats'
 
 type ChartProps = {
@@ -274,21 +272,8 @@ function DistributionPlot({ dataset }: { dataset: Dataset }) {
 function USChoropleth({ dataset }: { dataset: Dataset }) {
   const [selectedCode, setSelectedCode] = useState(dataset.regions[0]?.code ?? 'US')
   const regionsByCode = useMemo(() => new Map(dataset.regions.map((region) => [region.code, region])), [dataset])
-  const stateRegions = useMemo(() => {
-    return Object.values(fipsToState).map((state, index) => {
-      const explicitRegion = regionsByCode.get(state.code)
-      if (explicitRegion) return explicitRegion
-
-      return {
-        code: state.code,
-        name: state.name,
-        value: estimateStateValue(dataset, index),
-      }
-    })
-  }, [dataset, regionsByCode])
-  const stateRegionsByCode = useMemo(() => new Map(stateRegions.map((region) => [region.code, region])), [stateRegions])
-  const selectedRegion = stateRegionsByCode.get(selectedCode) ?? stateRegions[0]
-  const values = stateRegions.map((region) => region.value)
+  const selectedRegion = regionsByCode.get(selectedCode) ?? dataset.regions[0]
+  const values = dataset.regions.map((region) => region.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
   const geo = useMemo(() => {
@@ -309,10 +294,10 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
           {geo.features.map((state) => {
             const fips = String(state.id).padStart(2, '0')
             const stateMeta = fipsToState[fips]
-            const region = stateMeta ? stateRegionsByCode.get(stateMeta.code) : undefined
+            const region = stateMeta ? regionsByCode.get(stateMeta.code) : undefined
             const value = region?.value
             const label = stateMeta
-              ? `${stateMeta.name}: ${value ? formatValue(dataset, value) : 'No current sample'}`
+              ? `${stateMeta.name}: ${value ? formatValue(dataset, value) : 'No state-level EIA value for this series'}`
               : 'Unknown state'
             const statePath = path(state as unknown as GeoPermissibleObjects)
 
@@ -321,14 +306,14 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
             return (
               <path
                 aria-label={label}
-                className="map-state has-data"
+                className={region ? 'map-state has-data' : 'map-state missing-data'}
                 d={statePath}
                 fill={value ? choroplethColor(value, min, max) : undefined}
                 key={fips}
-                onClick={() => setSelectedCode(stateMeta.code)}
-                onFocus={() => setSelectedCode(stateMeta.code)}
-                role="button"
-                tabIndex={0}
+                onClick={() => region && setSelectedCode(stateMeta.code)}
+                onFocus={() => region && setSelectedCode(stateMeta.code)}
+                role={region ? 'button' : undefined}
+                tabIndex={region ? 0 : -1}
               >
                 <title>{label}</title>
               </path>
@@ -341,7 +326,7 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
           <>
             <span>{selectedRegion.name}</span>
             <strong>{formatValue(dataset, selectedRegion.value)}</strong>
-            <small>{formatValue(dataset, Math.abs(selectedRegion.value - dataset.stats.median))} from national median</small>
+            <small>{formatSignedDifference(dataset, selectedRegion)}</small>
           </>
         ) : (
           <>
@@ -352,19 +337,13 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         )}
       </div>
       <div className="map-legend" aria-hidden="true">
-        <span>Lower</span>
+        <span>Lower among reported states</span>
         <i />
         <span>Higher</span>
       </div>
+      <p className="map-note">Only states with EIA state-level rows for this gasoline series are colored.</p>
     </div>
   )
-}
-
-function estimateStateValue(dataset: Dataset, index: number) {
-  const wave = Math.sin(index * 1.7) * 0.08
-  const slope = ((index % 7) - 3) * 0.012
-  const estimate = dataset.stats.median * (1 + wave + slope)
-  return Number(estimate.toFixed(dataset.precision))
 }
 
 function buildCsv(dataset: Dataset) {
@@ -386,29 +365,11 @@ function downloadDataset(dataset: Dataset, type: 'csv' | 'json') {
   URL.revokeObjectURL(url)
 }
 
-function findSearchHit(query: string, activeDatasetId: string) {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return null
-
-  return (
-    searchHits.find((hit) => {
-      const inActiveDataset = hit.datasetId === activeDatasetId
-      const matches =
-        hit.zip.includes(normalized) ||
-        hit.city.toLowerCase().includes(normalized) ||
-        hit.state.toLowerCase().includes(normalized)
-      return inActiveDataset && matches
-    }) ?? null
-  )
-}
-
 function App() {
   const [availableDatasets, setAvailableDatasets] = useState<Dataset[]>(datasets)
   const [activeId, setActiveId] = useState(datasets[0].id)
-  const [query, setQuery] = useState('')
   const [dark, setDark] = useState(true)
   const activeDataset = availableDatasets.find((dataset) => dataset.id === activeId) ?? availableDatasets[0]
-  const searchHit = useMemo(() => findSearchHit(query, activeDataset.id), [query, activeDataset.id])
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
@@ -567,20 +528,7 @@ function App() {
         </aside>
 
         <div className="dashboard-stack">
-          <section className="tool-row" aria-label="Search and actions">
-            <label className="search-box">
-              <Search size={18} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search ZIP, city, or state"
-                aria-label="Search ZIP, city, or state"
-              />
-            </label>
-            <button className="action-button" type="button" onClick={() => navigator.clipboard?.writeText(window.location.href)}>
-              <Share2 size={17} />
-              Share
-            </button>
+          <section className="tool-row compact" aria-label="Dataset actions">
             <button
               className="action-button"
               type="button"
@@ -588,7 +536,7 @@ function App() {
               onClick={() => downloadDataset(activeDataset, 'csv')}
             >
               <Download size={17} />
-              CSV
+              Download CSV
             </button>
             <button
               className="action-button"
@@ -597,11 +545,9 @@ function App() {
               onClick={() => downloadDataset(activeDataset, 'json')}
             >
               <FileJson size={17} />
-              JSON
+              Download JSON
             </button>
           </section>
-
-          {searchHit && !activeDataset.unavailable ? <SearchResult hit={searchHit} dataset={activeDataset} /> : null}
 
           {activeDataset.unavailable ? (
             <section className="chart-card no-data-wide">
@@ -642,7 +588,7 @@ function App() {
                 <article className="chart-card">
                   <div className="card-title">
                     <MapIcon size={18} />
-                    <h2>State Median Choropleth</h2>
+                    <h2>EIA State Series Map</h2>
                   </div>
                   <USChoropleth dataset={activeDataset} key={activeDataset.id} />
                 </article>
@@ -650,7 +596,7 @@ function App() {
                 <article className="chart-card wide">
                   <div className="card-title">
                     <BarChart3 size={18} />
-                    <h2>Mean vs. Median Trend</h2>
+                    <h2>{activeDataset.isLive && activeDataset.id === 'gas' ? 'State Sample Mean vs. Median Trend' : 'Mean vs. Median Trend'}</h2>
                   </div>
                   <EChart dataset={activeDataset} kind="trend" dark={dark} />
                 </article>
@@ -664,12 +610,13 @@ function App() {
       <section id="data" className="data-band">
         <div>
           <p className="eyebrow">About the data</p>
-          <h2>Built for official sources and daily caching.</h2>
+          <h2>Source rights and notices.</h2>
         </div>
         <p>
-          This dashboard uses runtime API routes for live datasets and withholds charts when a source is
-          unavailable. Production connectors should hydrate the same objects from EIA, Census ACS, BLS,
-          and FHFA feeds with source dates displayed on every chart.
+          HonestStats compiles and transforms public-source datasets for informational purposes only.
+          Source data remains subject to the terms, limitations, revisions, and disclaimers of each
+          originating agency. HonestStats analysis, design, code, and compiled presentation are
+          copyright 2026. All rights reserved.
         </p>
         <a href={activeDataset.sourceUrl} target="_blank" rel="noreferrer">
           View current source: {activeDataset.source}
@@ -715,25 +662,17 @@ function emptyDataset(dataset: Dataset, reason: string): Dataset {
   }
 }
 
-function SearchResult({ hit, dataset }: { hit: LocalSearchHit; dataset: Dataset }) {
-  const delta = hit.localMedian - dataset.stats.median
-  const direction = delta >= 0 ? 'above' : 'below'
-
-  return (
-    <aside className="search-result">
-      <span>
-        {hit.city}, {hit.state} {hit.zip}
-      </span>
-      <strong>{formatValue(dataset, hit.localMedian)}</strong>
-      <small>
-        {formatValue(dataset, Math.abs(delta))} {direction} the national median
-      </small>
-    </aside>
-  )
-}
-
 function ladderWidth(key: MetricKey) {
   return { mean: 54, median: 43, mode: 36, p95: 82, p99: 100 }[key]
+}
+
+function formatSignedDifference(dataset: Dataset, region: RegionValue) {
+  const delta = region.value - dataset.stats.median
+  const sign = delta > 0 ? '+' : delta < 0 ? '-' : ''
+  const direction = delta > 0 ? 'above' : delta < 0 ? 'below' : 'at'
+  const amount = formatValue(dataset, Math.abs(delta))
+
+  return direction === 'at' ? `+${formatValue(dataset, 0)} vs. state-sample median` : `${sign}${amount} ${direction} state-sample median`
 }
 
 function choroplethColor(value: number, min: number, max: number) {

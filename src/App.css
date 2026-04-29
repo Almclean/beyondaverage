@@ -382,6 +382,10 @@ h2 {
   gap: 10px;
 }
 
+.tool-row.compact {
+  justify-content: flex-end;
+}
+
 .search-box {
   align-items: center;
   background: var(--panel);
@@ -638,6 +642,12 @@ h2 {
   background: linear-gradient(90deg, var(--accent), var(--warn), var(--hot));
   border-radius: 999px;
   height: 10px;
+}
+
+.map-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .search-result {

@@ -11,7 +11,20 @@ type ParsedRecord = {
   period: string
   code: string
   name: string
+  kind: 'national' | 'state' | 'other'
   value: number
+}
+
+const stateNames: Record<string, string> = {
+  CA: 'California',
+  CO: 'Colorado',
+  FL: 'Florida',
+  MA: 'Massachusetts',
+  MN: 'Minnesota',
+  NY: 'New York',
+  OH: 'Ohio',
+  TX: 'Texas',
+  WA: 'Washington',
 }
 
 export async function buildEiaGasDataset(): Promise<Dataset> {
@@ -29,7 +42,7 @@ export async function buildEiaGasDataset(): Promise<Dataset> {
   endpoint.searchParams.set('sort[0][column]', 'period')
   endpoint.searchParams.set('sort[0][direction]', 'desc')
   endpoint.searchParams.set('offset', '0')
-  endpoint.searchParams.set('length', '500')
+  endpoint.searchParams.set('length', '5000')
 
   const response = await fetch(endpoint)
 
@@ -50,13 +63,16 @@ export async function buildEiaGasDataset(): Promise<Dataset> {
 export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
   const latestPeriod = parsed[0].period
   const latestRecords = parsed.filter((record) => record.period === latestPeriod)
-  const national = latestRecords.find((record) => record.code === 'US') ?? latestRecords[0]
-  const regions = latestRecords
-    .filter((record) => record.code !== national.code)
+  const stateRecords = latestRecords.filter((record) => record.kind === 'state')
+  const regions = stateRecords
     .map(({ code, name, value }) => ({ code, name, value }))
     .sort((a, b) => b.value - a.value)
 
-  const distributionValues = regions.length > 0 ? regions.map((region) => region.value) : latestRecords.map((record) => record.value)
+  if (regions.length === 0) {
+    throw new Error('EIA returned no state-level gasoline rows for the selected product')
+  }
+
+  const distributionValues = regions.map((region) => region.value)
   const distribution = histogram(distributionValues, 10)
   const stats = {
     mean: round(mean(distributionValues), 2),
@@ -77,20 +93,12 @@ export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
     asOf: `EIA weekly data through ${latestPeriod}; fetched ${new Date().toISOString()}`,
     isLive: true,
     summary:
-      'Live EIA retail gasoline data is normalized into the same skew-aware dashboard shape as the local demo datasets.',
-    mostPeople: `Most reported EIA regions cluster around ${formatRange(distributionValues)} per gallon.`,
+      'Live EIA retail gasoline data is normalized from the state-level series currently available for this product.',
+    mostPeople: `Most reported EIA state series cluster around ${formatRange(distributionValues)} per gallon.`,
     stats,
     distribution,
-    regions: regions.slice(0, 12),
-    trend: parsed
-      .filter((record) => record.code === national.code)
-      .slice(0, 12)
-      .reverse()
-      .map((record) => ({
-        month: record.period.slice(5),
-        mean: round(record.value, 2),
-        median: round(record.value, 2),
-      })),
+    regions,
+    trend: buildStateTrend(parsed),
   }
 }
 
@@ -99,7 +107,8 @@ function parseRecords(records: EiaRecord[]): ParsedRecord[] {
     .map((record) => ({
       period: record.period,
       code: normalizeCode(record.duoarea),
-      name: normalizeName(record['duoarea-name'] ?? record.duoarea ?? 'Unknown area'),
+      name: normalizeName(record.duoarea, record['duoarea-name']),
+      kind: classifyArea(record.duoarea),
       value: Number(record.value),
     }))
     .filter((record) => Number.isFinite(record.value) && record.period)
@@ -108,11 +117,40 @@ function parseRecords(records: EiaRecord[]): ParsedRecord[] {
 function normalizeCode(code: string | undefined) {
   if (!code) return 'US'
   if (code === 'NUS') return 'US'
+  if (/^S[A-Z]{2}$/.test(code)) return code.slice(1)
   return code.replace(/^R/, '').replace(/^S/, '').slice(0, 4).toUpperCase()
 }
 
-function normalizeName(name: string) {
-  return name.replace(/^United States,?\s*/i, 'United States').replace(/ Regular Gasoline Prices.*$/i, '')
+function classifyArea(code: string | undefined): ParsedRecord['kind'] {
+  if (!code || code === 'NUS') return 'national'
+  if (/^S[A-Z]{2}$/.test(code)) return 'state'
+  return 'other'
+}
+
+function normalizeName(code: string | undefined, name: string | undefined) {
+  if (code && /^S[A-Z]{2}$/.test(code)) {
+    return stateNames[code.slice(1)] ?? code.slice(1)
+  }
+
+  return (name ?? code ?? 'Unknown area').replace(/^United States,?\s*/i, 'United States').replace(/ Regular Gasoline Prices.*$/i, '')
+}
+
+function buildStateTrend(parsed: ParsedRecord[]) {
+  const grouped = new Map<string, number[]>()
+
+  for (const record of parsed) {
+    if (record.kind !== 'state') continue
+    grouped.set(record.period, [...(grouped.get(record.period) ?? []), record.value])
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(-12)
+    .map(([period, values]) => ({
+      month: period.slice(5),
+      mean: round(mean(values), 2),
+      median: round(percentile(values, 0.5), 2),
+    }))
 }
 
 function mean(values: number[]) {
