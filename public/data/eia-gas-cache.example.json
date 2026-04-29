@@ -1,0 +1,34 @@
+{
+  "id": "gas",
+  "label": "Retail Gasoline",
+  "unit": "$/gal",
+  "precision": 2,
+  "source": "EIA Open Data API",
+  "sourceUrl": "https://www.eia.gov/opendata/",
+  "cadence": "Weekly EIA fetch; local cache",
+  "asOf": "Example cache shape only",
+  "summary": "Live EIA retail gasoline data is normalized into the same skew-aware dashboard shape as the local demo datasets.",
+  "mostPeople": "Most reported EIA regions cluster around $3.20-$3.70 per gallon.",
+  "stats": {
+    "mean": 3.58,
+    "median": 3.42,
+    "mode": 3.31,
+    "p95": 4.68,
+    "p99": 5.21
+  },
+  "distribution": [
+    { "label": "2.80", "value": 2.8, "count": 7 },
+    { "label": "3.00", "value": 3, "count": 18 },
+    { "label": "3.20", "value": 3.2, "count": 44 },
+    { "label": "3.40", "value": 3.4, "count": 62 },
+    { "label": "3.60", "value": 3.6, "count": 48 }
+  ],
+  "regions": [
+    { "code": "CA", "name": "California", "value": 4.82 },
+    { "code": "TX", "name": "Texas", "value": 3.08 }
+  ],
+  "trend": [
+    { "month": "Mar", "mean": 3.57, "median": 3.41 },
+    { "month": "Apr", "mean": 3.58, "median": 3.42 }
+  ]
+}
