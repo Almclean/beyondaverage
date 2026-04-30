@@ -103,8 +103,10 @@ function formatMetricValue(dataset: Dataset, value: number) {
     if (value >= 1_000) return `$${Math.round(value / 1_000)}k`
   }
 
-  if (dataset.unit === 'c/kWh') {
-    return `${value.toFixed(dataset.precision)}c`
+  if (dataset.unit === 'c/kWh' || dataset.unit === '$/MCF' || dataset.unit === '%') {
+    if (dataset.unit === '$/MCF') return `$${value.toFixed(dataset.precision)}`
+    const suffix = dataset.unit === 'c/kWh' ? 'c' : '%'
+    return `${value.toFixed(dataset.precision)}${suffix}`
   }
 
   return formatValue(dataset, value)
@@ -382,9 +384,7 @@ function App() {
     datasets.map((dataset) =>
       emptyDataset(
         dataset,
-        dataset.id === 'gas'
-          ? 'Loading live gasoline data from EIA.'
-          : `${dataset.source} connector is not wired yet. No values are displayed.`,
+        `Loading live ${dataset.label.toLowerCase()} data from ${dataset.source}.`,
       ),
     ),
   )
@@ -603,8 +603,10 @@ function App() {
                     <h2>
                       {activeDataset.id === 'gas'
                         ? 'EIA State Series Map'
-                        : activeDataset.id === 'energy'
+                        : activeDataset.id === 'energy' || activeDataset.id === 'natgas' || activeDataset.id === 'diesel'
                           ? 'State Price Map'
+                          : activeDataset.id === 'generation'
+                            ? 'Renewable Share Map'
                           : 'State Median Map'}
                     </h2>
                   </div>

@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { buildCensusDataset } from './server/census'
 import { buildEiaEnergyDataset } from './server/eia-energy'
-import { buildEiaGasDataset } from './server/eia-gas'
+import { buildEiaGenerationDataset } from './server/eia-generation'
+import { buildEiaDieselDataset, buildEiaGasDataset } from './server/eia-gas'
+import { buildEiaNaturalGasDataset } from './server/eia-natural-gas'
 
 const distDir = join(import.meta.dir, 'dist')
 const port = Number(process.env.PORT ?? 3000)
@@ -82,6 +84,15 @@ function buildDatasetPayload(datasetId: string) {
   }
   if (datasetId === 'energy') {
     return buildEiaEnergyDataset()
+  }
+  if (datasetId === 'diesel') {
+    return buildEiaDieselDataset()
+  }
+  if (datasetId === 'natgas') {
+    return buildEiaNaturalGasDataset()
+  }
+  if (datasetId === 'generation') {
+    return buildEiaGenerationDataset()
   }
 
   throw new Error(`Unknown dataset: ${datasetId}`)

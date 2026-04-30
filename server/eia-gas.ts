@@ -29,6 +29,32 @@ const stateNames: Record<string, string> = {
 }
 
 export async function buildEiaGasDataset(): Promise<Dataset> {
+  return buildEiaPetroleumPriceDataset({
+    id: 'gas',
+    label: 'Retail Gasoline',
+    product: 'EPM0',
+    productLabel: 'retail gasoline',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
+  })
+}
+
+export async function buildEiaDieselDataset(): Promise<Dataset> {
+  return buildEiaPetroleumPriceDataset({
+    id: 'diesel',
+    label: 'Diesel Prices',
+    product: 'EPD2D',
+    productLabel: 'diesel',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
+  })
+}
+
+async function buildEiaPetroleumPriceDataset(config: {
+  id: string
+  label: string
+  product: string
+  productLabel: string
+  sourceUrl: string
+}): Promise<Dataset> {
   const apiKey = process.env.EIA_API_KEY
 
   if (!apiKey) {
@@ -39,7 +65,7 @@ export async function buildEiaGasDataset(): Promise<Dataset> {
   endpoint.searchParams.set('api_key', apiKey)
   endpoint.searchParams.set('frequency', 'weekly')
   endpoint.searchParams.set('data[0]', 'value')
-  endpoint.searchParams.set('facets[product][]', 'EPM0')
+  endpoint.searchParams.set('facets[product][]', config.product)
   endpoint.searchParams.set('sort[0][column]', 'period')
   endpoint.searchParams.set('sort[0][direction]', 'desc')
   endpoint.searchParams.set('offset', '0')
@@ -55,13 +81,26 @@ export async function buildEiaGasDataset(): Promise<Dataset> {
   const parsed = parseRecords(payload.response?.data ?? [])
 
   if (parsed.length === 0) {
-    throw new Error('EIA returned no usable gasoline records')
+    throw new Error(`EIA returned no usable ${config.productLabel} records`)
   }
 
-  return normalizeGasDataset(parsed)
+  return normalizePetroleumDataset(parsed, config)
 }
 
 export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
+  return normalizePetroleumDataset(parsed, {
+    id: 'gas',
+    label: 'Retail Gasoline',
+    product: 'EPM0',
+    productLabel: 'retail gasoline',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
+  })
+}
+
+function normalizePetroleumDataset(
+  parsed: ParsedRecord[],
+  config: { id: string; label: string; productLabel: string; sourceUrl: string },
+): Dataset {
   const latestPeriod = parsed[0].period
   const latestRecords = parsed.filter((record) => record.period === latestPeriod)
   const stateRecords = latestRecords.filter((record) => record.kind === 'state')
@@ -70,10 +109,11 @@ export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
     .sort((a, b) => b.value - a.value)
 
   if (regions.length === 0) {
-    throw new Error('EIA returned no state-level gasoline rows for the selected product')
+    throw new Error(`EIA returned no state-level ${config.productLabel} rows for the selected product`)
   }
 
-  const distributionValues = regions.map((region) => region.value)
+  const reportedAreaValues = latestRecords.filter((record) => record.kind !== 'national').map((record) => record.value)
+  const distributionValues = reportedAreaValues.length >= regions.length ? reportedAreaValues : regions.map((region) => region.value)
   const distribution = histogram(distributionValues, 10, 2)
   const stats = {
     mean: round(mean(distributionValues), 2),
@@ -84,18 +124,17 @@ export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
   }
 
   return {
-    id: 'gas',
-    label: 'Retail Gasoline',
+    id: config.id,
+    label: config.label,
     unit: '$/gal',
     precision: 2,
     source: 'EIA Open Data API',
-    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
+    sourceUrl: config.sourceUrl,
     cadence: 'Runtime server cache',
     asOf: `EIA weekly data through ${latestPeriod}; fetched ${new Date().toISOString()}`,
     isLive: true,
-    summary:
-      'Live EIA retail gasoline data is normalized from the state-level series currently available for this product.',
-    mostPeople: `Most reported EIA state series cluster around ${formatRange(distributionValues)} per gallon.`,
+    summary: `Live EIA ${config.productLabel} data is normalized from reported state and regional series currently available for this product.`,
+    mostPeople: `Most reported EIA ${config.productLabel} series cluster around ${formatRange(distributionValues)} per gallon.`,
     stats,
     distribution,
     regions,
@@ -140,7 +179,7 @@ function buildStateTrend(parsed: ParsedRecord[]) {
   const grouped = new Map<string, number[]>()
 
   for (const record of parsed) {
-    if (record.kind !== 'state') continue
+    if (record.kind === 'national') continue
     grouped.set(record.period, [...(grouped.get(record.period) ?? []), record.value])
   }
 

@@ -2,7 +2,7 @@
 
 A first-pass Bun + React dashboard for showing skew-aware U.S. economic statistics: mean, median, mode, p95, p99, distributions, geographic medians, trends, and data-source context.
 
-The app loads gasoline and residential electricity through EIA, and income and home-price distributions through Census ACS. If a live source is unavailable, the app shows an explicit no-data state instead of placeholder values.
+The app loads gasoline, diesel, residential electricity, residential natural gas, and renewable grid-share data through EIA, and income and home-price distributions through Census ACS. If a live source is unavailable, the app shows an explicit no-data state instead of placeholder values.
 
 ## Run locally
 
@@ -40,7 +40,7 @@ PORT=3000
 
 ## Current MVP surface
 
-- Retail gasoline, household income, home prices, and residential energy datasets
+- Retail gasoline, diesel, household income, home prices, residential electricity, residential natural gas, and renewable grid-share datasets
 - Mean/median/mode/p95/p99 hero cards
 - Distribution and trend charts with ECharts
 - State choropleth maps
