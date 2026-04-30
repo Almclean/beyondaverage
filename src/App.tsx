@@ -450,9 +450,9 @@ function App() {
   return (
     <main className="app-shell">
       <header className="topbar" aria-label="Primary">
-        <a className="brand" href="#overview" aria-label="HonestStats home">
-          <span className="brand-mark">H</span>
-          <span>HonestStats</span>
+        <a className="brand" href="#overview" aria-label="BeyondAverage home">
+          <span className="brand-mark">BA</span>
+          <span>BeyondAverage</span>
         </a>
         <nav className="nav-links" aria-label="Sections">
           <a href="#datasets">Datasets</a>
@@ -469,7 +469,7 @@ function App() {
           <p className="eyebrow">Statistics without the spin</p>
           <h1>Beyond the national average.</h1>
           <p>
-            Averages flatten skewed datasets into easy headlines. HonestStats uses open data,
+            Averages flatten skewed datasets into easy headlines. BeyondAverage uses open data,
             distributions, medians, modes, and percentiles to show what people actually experience,
             without political spin.
           </p>
@@ -547,11 +547,11 @@ function App() {
               </>
             ) : (
               <>
-                <a className="action-button" download={`honeststats-${activeDataset.id}.csv`} href={csvHref}>
+                <a className="action-button" download={`beyondaverage-${activeDataset.id}.csv`} href={csvHref}>
                   <Download size={17} />
                   Download CSV
                 </a>
-                <a className="action-button" download={`honeststats-${activeDataset.id}.json`} href={jsonHref}>
+                <a className="action-button" download={`beyondaverage-${activeDataset.id}.json`} href={jsonHref}>
                   <FileJson size={17} />
                   Download JSON
                 </a>
@@ -631,9 +631,9 @@ function App() {
           <h2>Source rights and notices.</h2>
         </div>
         <p>
-          HonestStats compiles and transforms public-source datasets for informational purposes only.
+          BeyondAverage compiles and transforms public-source datasets for informational purposes only.
           Source data remains subject to the terms, limitations, revisions, and disclaimers of each
-          originating agency. HonestStats analysis, design, code, and compiled presentation are
+          originating agency. BeyondAverage analysis, design, code, and compiled presentation are
           copyright 2026. All rights reserved.
         </p>
         <a href={activeDataset.sourceUrl} target="_blank" rel="noreferrer">
@@ -670,7 +670,7 @@ function NoDataPanel({ reason }: { reason?: string }) {
   return (
     <div className="no-data-panel" role="status">
       <strong>No data available</strong>
-      <p>{reason ?? 'The upstream source did not return usable data, so HonestStats is not displaying placeholder values.'}</p>
+      <p>{reason ?? 'The upstream source did not return usable data, so BeyondAverage is not displaying placeholder values.'}</p>
     </div>
   )
 }

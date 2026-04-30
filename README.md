@@ -1,8 +1,8 @@
-# HonestStats
+# BeyondAverage
 
 A first-pass Bun + React dashboard for showing skew-aware U.S. economic statistics: mean, median, mode, p95, p99, distributions, geographic medians, trends, and data-source context.
 
-Retail gasoline is loaded through a Bun API route using a server-side EIA key. If the live source is unavailable, the app shows an explicit no-data state instead of placeholder values.
+The app loads gasoline and residential electricity through EIA, and income and home-price distributions through Census ACS. If a live source is unavailable, the app shows an explicit no-data state instead of placeholder values.
 
 ## Run locally
 
@@ -28,7 +28,7 @@ docker run --rm -p 8080:3000 --env-file .env beyondaverage
 
 Then open `http://localhost:8080`.
 
-The container runs a small Bun server. It serves the built frontend and fetches EIA data from `/api/datasets/gas` using `EIA_API_KEY` from the runtime environment. The browser never receives the API key.
+The container runs a small Bun server. It serves the built frontend and fetches source data through `/api/datasets/:id` using runtime environment secrets where needed. The browser never receives the API key.
 
 Useful environment variables:
 
@@ -43,7 +43,6 @@ PORT=3000
 - Retail gasoline, household income, home prices, and residential energy datasets
 - Mean/median/mode/p95/p99 hero cards
 - Distribution and trend charts with ECharts
-- State median heat-map tiles
-- ZIP/city/state search sample results
-- CSV/JSON demo downloads
+- State choropleth maps
+- CSV/JSON downloads
 - Dark/light theme toggle
