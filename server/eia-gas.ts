@@ -1,4 +1,5 @@
 import type { Dataset } from '../src/data'
+import { histogram, mean, percentile, round } from './dataset-utils'
 
 type EiaRecord = {
   period: string
@@ -73,7 +74,7 @@ export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
   }
 
   const distributionValues = regions.map((region) => region.value)
-  const distribution = histogram(distributionValues, 10)
+  const distribution = histogram(distributionValues, 10, 2)
   const stats = {
     mean: round(mean(distributionValues), 2),
     median: round(percentile(distributionValues, 0.5), 2),
@@ -153,44 +154,8 @@ function buildStateTrend(parsed: ParsedRecord[]) {
     }))
 }
 
-function mean(values: number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1)
-}
-
-function percentile(values: number[], quantile: number) {
-  const sorted = [...values].sort((a, b) => a - b)
-  const index = (sorted.length - 1) * quantile
-  const lower = Math.floor(index)
-  const upper = Math.ceil(index)
-  const weight = index - lower
-  return sorted[lower] * (1 - weight) + sorted[upper] * weight
-}
-
-function histogram(values: number[], size: number) {
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = Math.max(max - min, 0.1)
-  const step = span / size
-
-  return Array.from({ length: size }, (_, index) => {
-    const start = min + index * step
-    const end = index === size - 1 ? max + 0.001 : start + step
-    const value = round(start + step / 2, 2)
-    return {
-      label: value.toFixed(2),
-      value,
-      count: values.filter((item) => item >= start && item < end).length,
-    }
-  })
-}
-
 function formatRange(values: number[]) {
   const low = percentile(values, 0.25)
   const high = percentile(values, 0.75)
   return `$${low.toFixed(2)}-$${high.toFixed(2)}`
-}
-
-function round(value: number, digits: number) {
-  const factor = 10 ** digits
-  return Math.round(value * factor) / factor
 }

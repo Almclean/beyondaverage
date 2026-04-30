@@ -103,6 +103,10 @@ function formatMetricValue(dataset: Dataset, value: number) {
     if (value >= 1_000) return `$${Math.round(value / 1_000)}k`
   }
 
+  if (dataset.unit === 'c/kWh') {
+    return `${value.toFixed(dataset.precision)}c`
+  }
+
   return formatValue(dataset, value)
 }
 
@@ -342,7 +346,9 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         <span>Higher</span>
       </div>
       <p className="map-note">
-        EIA currently reports {dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.
+        {dataset.id === 'gas'
+          ? `EIA currently reports ${dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.`
+          : `${dataset.source} provides ${dataset.regions.length} state-level values for this view. Missing states are intentionally left uncolored rather than estimated.`}
       </p>
     </div>
   )
@@ -594,7 +600,13 @@ function App() {
                 <article className="chart-card">
                   <div className="card-title">
                     <MapIcon size={18} />
-                    <h2>EIA State Series Map</h2>
+                    <h2>
+                      {activeDataset.id === 'gas'
+                        ? 'EIA State Series Map'
+                        : activeDataset.id === 'energy'
+                          ? 'State Price Map'
+                          : 'State Median Map'}
+                    </h2>
                   </div>
                   <USChoropleth dataset={activeDataset} key={activeDataset.id} />
                 </article>

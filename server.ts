@@ -1,18 +1,14 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
+import { buildCensusDataset } from './server/census'
+import { buildEiaEnergyDataset } from './server/eia-energy'
 import { buildEiaGasDataset } from './server/eia-gas'
 
 const distDir = join(import.meta.dir, 'dist')
 const port = Number(process.env.PORT ?? 3000)
 const cacheTtlMs = Number(process.env.EIA_CACHE_TTL_MS ?? 6 * 60 * 60 * 1000)
-let gasCache: { expiresAt: number; payload: unknown } | null = null
-
-const pendingDatasetConnectors: Record<string, { label: string; source: string }> = {
-  income: { label: 'Household Income', source: 'Census ACS + BLS' },
-  housing: { label: 'Home Prices', source: 'Census ACS + FHFA HPI' },
-  energy: { label: 'Residential Energy', source: 'EIA Open Data API' },
-}
+const datasetCache = new Map<string, { expiresAt: number; payload: unknown }>()
 
 const mimeTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -36,11 +32,7 @@ Bun.serve({
     if (url.pathname.startsWith('/api/datasets/')) {
       const datasetId = url.pathname.split('/').pop() ?? ''
 
-      if (datasetId === 'gas') {
-        return getGasDataset()
-      }
-
-      return getPendingDataset(datasetId)
+      return getDataset(datasetId)
     }
 
     return serveStatic(url.pathname)
@@ -49,22 +41,24 @@ Bun.serve({
 
 console.log(`BeyondAverage listening on http://localhost:${port}`)
 
-async function getGasDataset() {
-  if (gasCache && gasCache.expiresAt > Date.now()) {
-    return Response.json(gasCache.payload, {
+async function getDataset(datasetId: string) {
+  const cached = datasetCache.get(datasetId)
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return Response.json(cached.payload, {
       headers: { 'Cache-Control': 'public, max-age=300' },
     })
   }
 
   try {
-    const payload = await buildEiaGasDataset()
-    gasCache = { expiresAt: Date.now() + cacheTtlMs, payload }
+    const payload = await buildDatasetPayload(datasetId)
+    datasetCache.set(datasetId, { expiresAt: Date.now() + cacheTtlMs, payload })
 
     return Response.json(payload, {
       headers: { 'Cache-Control': 'public, max-age=300' },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown EIA fetch error'
+    const message = error instanceof Error ? error.message : 'Unknown dataset fetch error'
 
     return Response.json(
       {
@@ -76,26 +70,21 @@ async function getGasDataset() {
   }
 }
 
-function getPendingDataset(datasetId: string) {
-  const dataset = pendingDatasetConnectors[datasetId]
-
-  if (!dataset) {
-    return Response.json(
-      { error: `Unknown dataset: ${datasetId}` },
-      { status: 404, headers: { 'Cache-Control': 'no-store' } },
-    )
+function buildDatasetPayload(datasetId: string) {
+  if (datasetId === 'gas') {
+    return buildEiaGasDataset()
+  }
+  if (datasetId === 'income') {
+    return buildCensusDataset('income')
+  }
+  if (datasetId === 'housing') {
+    return buildCensusDataset('housing')
+  }
+  if (datasetId === 'energy') {
+    return buildEiaEnergyDataset()
   }
 
-  return Response.json(
-    {
-      id: datasetId,
-      label: dataset.label,
-      source: dataset.source,
-      status: 'not_implemented',
-      error: `${dataset.label} is not wired to ${dataset.source} yet. No values are displayed until the official source connector is implemented.`,
-    },
-    { status: 501, headers: { 'Cache-Control': 'no-store' } },
-  )
+  throw new Error(`Unknown dataset: ${datasetId}`)
 }
 
 async function serveStatic(pathname: string) {
