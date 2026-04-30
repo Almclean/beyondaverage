@@ -88,7 +88,7 @@ export function normalizeGasDataset(parsed: ParsedRecord[]): Dataset {
     unit: '$/gal',
     precision: 2,
     source: 'EIA Open Data API',
-    sourceUrl: 'https://www.eia.gov/opendata/',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
     cadence: 'Runtime server cache',
     asOf: `EIA weekly data through ${latestPeriod}; fetched ${new Date().toISOString()}`,
     isLive: true,
@@ -146,8 +146,8 @@ function buildStateTrend(parsed: ParsedRecord[]) {
   return [...grouped.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .slice(-12)
-    .map(([period, values]) => ({
-      month: period.slice(5),
+      .map(([period, values]) => ({
+      month: period,
       mean: round(mean(values), 2),
       median: round(percentile(values, 0.5), 2),
     }))

@@ -284,6 +284,15 @@ h2 {
   line-height: 1.5;
 }
 
+.median-explainer {
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 12px;
+  padding-left: 10px;
+}
+
 .source-meta {
   color: color-mix(in srgb, var(--muted) 82%, var(--heading));
   font-family: "Cascadia Mono", "Courier New", monospace;
@@ -418,9 +427,10 @@ h2 {
   padding: 0 12px;
 }
 
-.action-button:disabled {
+.action-button.disabled {
   cursor: not-allowed;
   opacity: 0.45;
+  pointer-events: none;
 }
 
 .analysis-grid {

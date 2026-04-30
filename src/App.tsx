@@ -341,28 +341,34 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         <i />
         <span>Higher</span>
       </div>
-      <p className="map-note">Only states with EIA state-level rows for this gasoline series are colored.</p>
+      <p className="map-note">
+        EIA currently reports {dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.
+      </p>
     </div>
   )
 }
 
 function buildCsv(dataset: Dataset) {
   const rows = [
-    ['dataset', 'metric', 'value', 'unit'],
-    ...Object.entries(dataset.stats).map(([key, value]) => [dataset.label, key, String(value), dataset.unit]),
+    ['section', 'dataset', 'label', 'value', 'unit'],
+    ...Object.entries(dataset.stats).map(([key, value]) => ['metric', dataset.label, key, String(value), dataset.unit]),
+    ...dataset.regions.map((region) => ['region', dataset.label, `${region.name} (${region.code})`, String(region.value), dataset.unit]),
+    ...dataset.trend.flatMap((point) => [
+      ['trend', dataset.label, `${point.month} mean`, String(point.mean), dataset.unit],
+      ['trend', dataset.label, `${point.month} median`, String(point.median), dataset.unit],
+    ]),
   ]
-  return rows.map((row) => row.join(',')).join('\n')
+  return rows.map((row) => row.map((value) => escapeCsv(String(value))).join(',')).join('\n')
 }
 
-function downloadDataset(dataset: Dataset, type: 'csv' | 'json') {
+function datasetDownloadHref(dataset: Dataset, type: 'csv' | 'json') {
   const payload = type === 'csv' ? buildCsv(dataset) : JSON.stringify(dataset, null, 2)
-  const blob = new Blob([payload], { type: type === 'csv' ? 'text/csv' : 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `honeststats-${dataset.id}.${type}`
-  anchor.click()
-  URL.revokeObjectURL(url)
+  const mimeType = type === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8'
+  return `data:${mimeType},${encodeURIComponent(payload)}`
+}
+
+function escapeCsv(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
 }
 
 function App() {
@@ -370,6 +376,8 @@ function App() {
   const [activeId, setActiveId] = useState(datasets[0].id)
   const [dark, setDark] = useState(true)
   const activeDataset = availableDatasets.find((dataset) => dataset.id === activeId) ?? availableDatasets[0]
+  const csvHref = useMemo(() => datasetDownloadHref(activeDataset, 'csv'), [activeDataset])
+  const jsonHref = useMemo(() => datasetDownloadHref(activeDataset, 'json'), [activeDataset])
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
@@ -501,6 +509,9 @@ function App() {
                 ))}
               </div>
               <p className="panel-note">{activeDataset.mostPeople}</p>
+              <p className="median-explainer">
+                Median is highlighted because it marks the middle reported value. When high outliers lift the mean, the median is often closer to what a typical person sees.
+              </p>
             </>
           )}
           <p className="source-meta">{activeDataset.asOf}</p>
@@ -529,24 +540,24 @@ function App() {
 
         <div className="dashboard-stack">
           <section className="tool-row compact" aria-label="Dataset actions">
-            <button
-              className="action-button"
-              type="button"
-              disabled={activeDataset.unavailable}
-              onClick={() => downloadDataset(activeDataset, 'csv')}
+            <a
+              aria-disabled={activeDataset.unavailable}
+              className={activeDataset.unavailable ? 'action-button disabled' : 'action-button'}
+              download={`honeststats-${activeDataset.id}.csv`}
+              href={activeDataset.unavailable ? undefined : csvHref}
             >
               <Download size={17} />
               Download CSV
-            </button>
-            <button
-              className="action-button"
-              type="button"
-              disabled={activeDataset.unavailable}
-              onClick={() => downloadDataset(activeDataset, 'json')}
+            </a>
+            <a
+              aria-disabled={activeDataset.unavailable}
+              className={activeDataset.unavailable ? 'action-button disabled' : 'action-button'}
+              download={`honeststats-${activeDataset.id}.json`}
+              href={activeDataset.unavailable ? undefined : jsonHref}
             >
               <FileJson size={17} />
               Download JSON
-            </button>
+            </a>
           </section>
 
           {activeDataset.unavailable ? (
@@ -580,7 +591,9 @@ function App() {
                       </div>
                     ))}
                   </div>
-                  <p className="small-copy">The wider the gap from median to p99, the more the average is being pulled by the high end.</p>
+                  <p className="small-copy">
+                    Percentiles show how far into the distribution a value sits. p95 means 95% of reported values are at or below that point; p99 shows the high-end tail that can pull averages away from typical experience.
+                  </p>
                 </article>
               </section>
 
@@ -619,7 +632,7 @@ function App() {
           copyright 2026. All rights reserved.
         </p>
         <a href={activeDataset.sourceUrl} target="_blank" rel="noreferrer">
-          View current source: {activeDataset.source}
+          Open source data: {activeDataset.source}
         </a>
       </section>
     </main>

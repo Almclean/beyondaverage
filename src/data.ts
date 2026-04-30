@@ -55,7 +55,7 @@ export const datasets: Dataset[] = [
     unit: '$/gal',
     precision: 2,
     source: 'EIA Open Data API',
-    sourceUrl: 'https://www.eia.gov/opendata/',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/petroleum/pri/gnd',
     cadence: 'Daily cache target',
     asOf: 'Demo snapshot for MVP wiring',
     summary:
@@ -208,7 +208,7 @@ export const datasets: Dataset[] = [
     unit: 'c/kWh',
     precision: 1,
     source: 'EIA Open Data API',
-    sourceUrl: 'https://www.eia.gov/opendata/',
+    sourceUrl: 'https://www.eia.gov/opendata/browser/electricity/retail-sales',
     cadence: 'Monthly cache target',
     asOf: 'Demo snapshot for MVP wiring',
     summary:
