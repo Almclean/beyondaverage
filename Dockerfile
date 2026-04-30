@@ -25,4 +25,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD bun -e "const r=await fetch('http://127.0.0.1:3000/api/health'); if (!r.ok) process.exit(1)"
 
-CMD ["bun", "run", "server.ts"]
+CMD ["bun", "server.ts"]
