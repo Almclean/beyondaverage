@@ -85,6 +85,17 @@ const fipsToState: Record<string, { code: string; name: string }> = {
   '56': { code: 'WY', name: 'Wyoming' },
 }
 
+const dieselAreaStates: Record<string, string[]> = {
+  R1X: ['CT', 'ME', 'MA', 'NH', 'RI', 'VT'],
+  R1Y: ['DE', 'DC', 'MD', 'NJ', 'NY', 'PA'],
+  R1Z: ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  R20: ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'OK', 'SD', 'WI'],
+  R30: ['AR', 'LA', 'NM', 'TX'],
+  R40: ['CO', 'ID', 'MT', 'UT', 'WY'],
+  R5XCA: ['AK', 'AZ', 'HI', 'NV', 'OR', 'WA'],
+  R50: ['AK', 'AZ', 'CA', 'HI', 'NV', 'OR', 'WA'],
+}
+
 function formatValue(dataset: Dataset, value: number) {
   const formatted = new Intl.NumberFormat('en-US', {
     maximumFractionDigits: dataset.precision,
@@ -278,8 +289,11 @@ function DistributionPlot({ dataset }: { dataset: Dataset }) {
 function USChoropleth({ dataset }: { dataset: Dataset }) {
   const [selectedCode, setSelectedCode] = useState(dataset.regions[0]?.code ?? 'US')
   const regionsByCode = useMemo(() => new Map(dataset.regions.map((region) => [region.code, region])), [dataset])
-  const selectedRegion = regionsByCode.get(selectedCode) ?? dataset.regions[0]
-  const values = dataset.regions.map((region) => region.value)
+  const areasByCode = useMemo(() => new Map((dataset.areas ?? []).map((area) => [area.code, area])), [dataset])
+  const selectedRegion = regionsByCode.get(selectedCode)
+  const selectedArea = areasByCode.get(selectedCode)
+  const selectedMapValue = selectedRegion ?? selectedArea ?? dataset.regions[0] ?? dataset.areas?.[0]
+  const values = [...dataset.regions, ...(dataset.areas ?? [])].map((region) => region.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
   const geo = useMemo(() => {
@@ -301,9 +315,10 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
             const fips = String(state.id).padStart(2, '0')
             const stateMeta = fipsToState[fips]
             const region = stateMeta ? regionsByCode.get(stateMeta.code) : undefined
-            const value = region?.value
+            const area = stateMeta ? areaForState(dataset, stateMeta.code, areasByCode) : undefined
+            const value = region?.value ?? area?.value
             const label = stateMeta
-              ? `${stateMeta.name}: ${value ? formatValue(dataset, value) : 'No state-level EIA value for this series'}`
+              ? `${stateMeta.name}: ${value ? formatValue(dataset, value) : 'No state or regional EIA value for this series'}${area && !region ? ` (${area.name} regional series)` : ''}`
               : 'Unknown state'
             const statePath = path(state as unknown as GeoPermissibleObjects)
 
@@ -312,14 +327,14 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
             return (
               <path
                 aria-label={label}
-                className={region ? 'map-state has-data' : 'map-state missing-data'}
+                className={region ? 'map-state has-data state-data' : area ? 'map-state has-data area-data' : 'map-state missing-data'}
                 d={statePath}
                 fill={value ? choroplethColor(value, min, max) : undefined}
                 key={fips}
-                onClick={() => region && setSelectedCode(stateMeta.code)}
-                onFocus={() => region && setSelectedCode(stateMeta.code)}
-                role={region ? 'button' : undefined}
-                tabIndex={region ? 0 : -1}
+                onClick={() => (region || area) && setSelectedCode(region?.code ?? area?.code ?? stateMeta.code)}
+                onFocus={() => (region || area) && setSelectedCode(region?.code ?? area?.code ?? stateMeta.code)}
+                role={region || area ? 'button' : undefined}
+                tabIndex={region || area ? 0 : -1}
               >
                 <title>{label}</title>
               </path>
@@ -328,11 +343,11 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         </g>
       </svg>
       <div className="map-detail" aria-live="polite">
-        {selectedRegion ? (
+        {selectedMapValue ? (
           <>
-            <span>{selectedRegion.name}</span>
-            <strong>{formatValue(dataset, selectedRegion.value)}</strong>
-            <small>{formatSignedDifference(dataset, selectedRegion)}</small>
+            <span>{selectedMapValue.name}</span>
+            <strong>{formatValue(dataset, selectedMapValue.value)}</strong>
+            <small>{formatMapDifference(dataset, selectedMapValue, selectedArea && !selectedRegion ? 'reported-area' : 'state-sample')}</small>
           </>
         ) : (
           <>
@@ -343,7 +358,7 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         )}
       </div>
       <div className="map-legend" aria-hidden="true">
-        <span>Lower among reported states</span>
+        <span>{dataset.areas?.length ? 'Lower among reported areas' : 'Lower among reported states'}</span>
         <i />
         <span>Higher</span>
       </div>
@@ -354,13 +369,23 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
   )
 }
 
+function areaForState(dataset: Dataset, stateCode: string, areasByCode: Map<string, RegionValue>) {
+  if (dataset.id !== 'diesel') return undefined
+
+  const preferredCodes = stateCode === 'CA' ? ['R50'] : ['R1X', 'R1Y', 'R1Z', 'R20', 'R30', 'R40', 'R5XCA', 'R50', 'R10']
+  return preferredCodes
+    .filter((areaCode) => dieselAreaStates[areaCode]?.includes(stateCode))
+    .map((areaCode) => areasByCode.get(areaCode))
+    .find(Boolean)
+}
+
 function mapNote(dataset: Dataset) {
   if (dataset.id === 'gas') {
     return `EIA currently reports ${dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.`
   }
 
   if (dataset.id === 'diesel') {
-    return `EIA currently reports regional diesel prices plus ${dataset.regions.length} state-level diesel row. The distribution uses current reported regional and state prices; this map only colors state-level rows.`
+    return `EIA currently reports ${dataset.areas?.length ?? 0} regional diesel series plus ${dataset.regions.length} state-level diesel row. Regional colors are shown where state-level values are unavailable; state rows still take precedence.`
   }
 
   return `${dataset.source} provides ${dataset.regions.length} state-level values for this view. Missing states are intentionally left uncolored rather than estimated.`
@@ -371,6 +396,7 @@ function buildCsv(dataset: Dataset) {
     ['section', 'dataset', 'label', 'value', 'unit'],
     ...Object.entries(dataset.stats).map(([key, value]) => ['metric', dataset.label, key, String(value), dataset.unit]),
     ...dataset.regions.map((region) => ['region', dataset.label, `${region.name} (${region.code})`, String(region.value), dataset.unit]),
+    ...(dataset.areas ?? []).map((area) => ['area', dataset.label, `${area.name} (${area.code})`, String(area.value), dataset.unit]),
     ...dataset.trend.flatMap((point) => [
       ['trend', dataset.label, `${point.month} mean`, String(point.mean), dataset.unit],
       ['trend', dataset.label, `${point.month} median`, String(point.median), dataset.unit],
@@ -706,13 +732,14 @@ function ladderWidth(key: MetricKey) {
   return { mean: 54, median: 43, mode: 36, p95: 82, p99: 100 }[key]
 }
 
-function formatSignedDifference(dataset: Dataset, region: RegionValue) {
+function formatMapDifference(dataset: Dataset, region: RegionValue, baselineLabel: 'state-sample' | 'reported-area') {
   const delta = region.value - dataset.stats.median
   const sign = delta > 0 ? '+' : delta < 0 ? '-' : ''
   const direction = delta > 0 ? 'above' : delta < 0 ? 'below' : 'at'
   const amount = formatValue(dataset, Math.abs(delta))
+  const label = baselineLabel === 'reported-area' ? 'reported-area median' : 'state-sample median'
 
-  return direction === 'at' ? `+${formatValue(dataset, 0)} vs. state-sample median` : `${sign}${amount} ${direction} state-sample median`
+  return direction === 'at' ? `+${formatValue(dataset, 0)} vs. ${label}` : `${sign}${amount} ${direction} ${label}`
 }
 
 function choroplethColor(value: number, min: number, max: number) {

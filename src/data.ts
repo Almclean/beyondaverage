@@ -37,6 +37,7 @@ export type Dataset = {
   stats: StatSet
   distribution: DistributionBin[]
   regions: RegionValue[]
+  areas?: RegionValue[]
   trend: TrendPoint[]
 }
 

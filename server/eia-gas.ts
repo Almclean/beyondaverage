@@ -28,6 +28,18 @@ const stateNames: Record<string, string> = {
   WA: 'Washington',
 }
 
+const areaNames: Record<string, string> = {
+  R10: 'East Coast',
+  R1X: 'New England',
+  R1Y: 'Central Atlantic',
+  R1Z: 'Lower Atlantic',
+  R20: 'Midwest',
+  R30: 'Gulf Coast',
+  R40: 'Rocky Mountain',
+  R50: 'West Coast',
+  R5XCA: 'West Coast excluding California',
+}
+
 export async function buildEiaGasDataset(): Promise<Dataset> {
   return buildEiaPetroleumPriceDataset({
     id: 'gas',
@@ -104,7 +116,11 @@ function normalizePetroleumDataset(
   const latestPeriod = parsed[0].period
   const latestRecords = parsed.filter((record) => record.period === latestPeriod)
   const stateRecords = latestRecords.filter((record) => record.kind === 'state')
+  const areaRecords = latestRecords.filter((record) => record.kind === 'other')
   const regions = stateRecords
+    .map(({ code, name, value }) => ({ code, name, value }))
+    .sort((a, b) => b.value - a.value)
+  const areas = areaRecords
     .map(({ code, name, value }) => ({ code, name, value }))
     .sort((a, b) => b.value - a.value)
 
@@ -138,6 +154,7 @@ function normalizePetroleumDataset(
     stats,
     distribution,
     regions,
+    areas,
     trend: buildStateTrend(parsed),
   }
 }
@@ -158,7 +175,7 @@ function normalizeCode(code: string | undefined) {
   if (!code) return 'US'
   if (code === 'NUS') return 'US'
   if (/^S[A-Z]{2}$/.test(code)) return code.slice(1)
-  return code.replace(/^R/, '').replace(/^S/, '').slice(0, 4).toUpperCase()
+  return code.toUpperCase()
 }
 
 function classifyArea(code: string | undefined): ParsedRecord['kind'] {
@@ -170,6 +187,10 @@ function classifyArea(code: string | undefined): ParsedRecord['kind'] {
 function normalizeName(code: string | undefined, name: string | undefined) {
   if (code && /^S[A-Z]{2}$/.test(code)) {
     return stateNames[code.slice(1)] ?? code.slice(1)
+  }
+
+  if (code && areaNames[code]) {
+    return areaNames[code]
   }
 
   return (name ?? code ?? 'Unknown area').replace(/^United States,?\s*/i, 'United States').replace(/ Regular Gasoline Prices.*$/i, '')

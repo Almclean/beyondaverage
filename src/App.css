@@ -610,6 +610,16 @@ h2 {
   opacity: 0.48;
 }
 
+.map-state.area-data {
+  opacity: 0.74;
+  stroke-dasharray: 2 2;
+}
+
+.map-state.state-data {
+  stroke: color-mix(in srgb, var(--heading) 82%, var(--accent));
+  stroke-width: 1.4;
+}
+
 .map-state.has-data:hover,
 .map-state.has-data:focus {
   filter: brightness(1.18) saturate(1.2);
