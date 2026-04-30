@@ -187,6 +187,7 @@ h2 {
 }
 
 .hero-panel {
+  min-width: 0;
   padding: 22px;
   position: relative;
   z-index: 1;
@@ -219,7 +220,7 @@ h2 {
 
 .metric-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   margin: 22px 0;
 }
@@ -232,7 +233,7 @@ h2 {
   gap: 8px;
   min-height: 124px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
 }
 
 .metric-card span {
@@ -245,7 +246,7 @@ h2 {
 .metric-card strong {
   color: var(--warn);
   font-family: "Cascadia Mono", "Courier New", monospace;
-  font-size: clamp(24px, 2.55vw, 40px);
+  font-size: clamp(22px, 2.05vw, 32px);
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
   max-width: 100%;
