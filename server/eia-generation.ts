@@ -17,6 +17,34 @@ type GenerationShareRecord = {
 }
 
 export async function buildEiaGenerationDataset(): Promise<Dataset> {
+  return buildEiaGenerationShareDataset({
+    id: 'generation',
+    label: 'Renewable Grid Share',
+    fueltypeid: 'AOR',
+    fuelLabel: 'renewable',
+    summary:
+      'State grid mix varies widely, so national generation-share headlines can hide what local electricity actually uses.',
+  })
+}
+
+export async function buildEiaFossilGenerationDataset(): Promise<Dataset> {
+  return buildEiaGenerationShareDataset({
+    id: 'fossilgrid',
+    label: 'Fossil Grid Share',
+    fueltypeid: 'FOS',
+    fuelLabel: 'fossil fuel',
+    summary:
+      'National clean-grid or fossil-grid claims can hide how differently each state still generates electricity.',
+  })
+}
+
+async function buildEiaGenerationShareDataset(config: {
+  id: string
+  label: string
+  fueltypeid: string
+  fuelLabel: string
+  summary: string
+}): Promise<Dataset> {
   const apiKey = process.env.EIA_API_KEY
 
   if (!apiKey) {
@@ -28,7 +56,7 @@ export async function buildEiaGenerationDataset(): Promise<Dataset> {
   endpoint.searchParams.set('frequency', 'monthly')
   endpoint.searchParams.set('data[0]', 'generation')
   endpoint.searchParams.append('facets[fueltypeid][]', 'ALL')
-  endpoint.searchParams.append('facets[fueltypeid][]', 'AOR')
+  endpoint.searchParams.append('facets[fueltypeid][]', config.fueltypeid)
   endpoint.searchParams.set('facets[sectorid][]', '99')
   endpoint.searchParams.set('sort[0][column]', 'period')
   endpoint.searchParams.set('sort[0][direction]', 'desc')
@@ -42,16 +70,19 @@ export async function buildEiaGenerationDataset(): Promise<Dataset> {
   }
 
   const payload = (await response.json()) as { response?: { data?: GenerationRecord[] } }
-  const parsed = parseRenewableShareRecords(payload.response?.data ?? [])
+  const parsed = parseShareRecords(payload.response?.data ?? [], config.fueltypeid)
 
   if (parsed.length === 0) {
-    throw new Error('EIA returned no usable generation mix records')
+    throw new Error(`EIA returned no usable ${config.fuelLabel} generation mix records`)
   }
 
-  return normalizeGenerationDataset(parsed)
+  return normalizeGenerationDataset(parsed, config)
 }
 
-function normalizeGenerationDataset(parsed: GenerationShareRecord[]): Dataset {
+function normalizeGenerationDataset(
+  parsed: GenerationShareRecord[],
+  config: { id: string; label: string; fuelLabel: string; summary: string },
+): Dataset {
   const latestPeriod = parsed[0].period
   const latestRecords = parsed.filter((record) => record.period === latestPeriod)
   const regions = latestRecords
@@ -59,7 +90,7 @@ function normalizeGenerationDataset(parsed: GenerationShareRecord[]): Dataset {
     .sort((a, b) => b.value - a.value)
 
   if (regions.length === 0) {
-    throw new Error('EIA returned no state-level renewable share records')
+    throw new Error(`EIA returned no state-level ${config.fuelLabel} share records`)
   }
 
   const values = regions.map((region) => region.value)
@@ -73,8 +104,8 @@ function normalizeGenerationDataset(parsed: GenerationShareRecord[]): Dataset {
   }
 
   return {
-    id: 'generation',
-    label: 'Renewable Grid Share',
+    id: config.id,
+    label: config.label,
     unit: '%',
     precision: 1,
     source: 'EIA Open Data API',
@@ -82,9 +113,8 @@ function normalizeGenerationDataset(parsed: GenerationShareRecord[]): Dataset {
     cadence: 'Runtime server cache',
     asOf: `EIA monthly generation data through ${latestPeriod}; fetched ${new Date().toISOString()}`,
     isLive: true,
-    summary:
-      'State grid mix varies widely, so national generation-share headlines can hide what local electricity actually uses.',
-    mostPeople: `Most state renewable shares cluster around ${percentile(values, 0.25).toFixed(1)}%-${percentile(values, 0.75).toFixed(1)}% of generation.`,
+    summary: config.summary,
+    mostPeople: `Most state ${config.fuelLabel} shares cluster around ${percentile(values, 0.25).toFixed(1)}%-${percentile(values, 0.75).toFixed(1)}% of generation.`,
     stats,
     distribution,
     regions,
@@ -92,8 +122,8 @@ function normalizeGenerationDataset(parsed: GenerationShareRecord[]): Dataset {
   }
 }
 
-function parseRenewableShareRecords(records: GenerationRecord[]): GenerationShareRecord[] {
-  const grouped = new Map<string, { period: string; code: string; name: string; all?: number; renewable?: number }>()
+function parseShareRecords(records: GenerationRecord[], fueltypeid: string): GenerationShareRecord[] {
+  const grouped = new Map<string, { period: string; code: string; name: string; all?: number; selected?: number }>()
 
   for (const record of records) {
     const code = record.location?.toUpperCase() ?? ''
@@ -107,17 +137,17 @@ function parseRenewableShareRecords(records: GenerationRecord[]): GenerationShar
     const value = Number(record.generation)
     if (!Number.isFinite(value) || value <= 0) continue
     if (record.fueltypeid === 'ALL') current.all = value
-    if (record.fueltypeid === 'AOR') current.renewable = value
+    if (record.fueltypeid === fueltypeid) current.selected = value
     grouped.set(key, current)
   }
 
   return [...grouped.values()]
-    .filter((record) => record.all && record.renewable)
+    .filter((record) => record.all && record.selected)
     .map((record) => ({
       period: record.period,
       code: record.code,
       name: record.name,
-      value: ((record.renewable ?? 0) / Math.max(record.all ?? 0, 0.01)) * 100,
+      value: ((record.selected ?? 0) / Math.max(record.all ?? 0, 0.01)) * 100,
     }))
 }
 

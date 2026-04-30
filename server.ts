@@ -2,10 +2,13 @@ import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { buildCensusDataset } from './server/census'
+import { buildEiaCrudeGapDataset } from './server/eia-crude-gap'
 import { buildEiaEnergyDataset } from './server/eia-energy'
-import { buildEiaGenerationDataset } from './server/eia-generation'
+import { buildEiaElectricitySpreadDataset } from './server/eia-electricity-spread'
+import { buildEiaFossilGenerationDataset, buildEiaGenerationDataset } from './server/eia-generation'
 import { buildEiaDieselDataset, buildEiaGasDataset } from './server/eia-gas'
 import { buildEiaNaturalGasDataset } from './server/eia-natural-gas'
+import { buildEiaHeatingOilDataset, buildEiaPropaneDataset } from './server/eia-weekly-fuels'
 
 const distDir = join(import.meta.dir, 'dist')
 const port = Number(process.env.PORT ?? 3000)
@@ -93,6 +96,21 @@ function buildDatasetPayload(datasetId: string) {
   }
   if (datasetId === 'generation') {
     return buildEiaGenerationDataset()
+  }
+  if (datasetId === 'heatingoil') {
+    return buildEiaHeatingOilDataset()
+  }
+  if (datasetId === 'propane') {
+    return buildEiaPropaneDataset()
+  }
+  if (datasetId === 'elecspread') {
+    return buildEiaElectricitySpreadDataset()
+  }
+  if (datasetId === 'crudegap') {
+    return buildEiaCrudeGapDataset()
+  }
+  if (datasetId === 'fossilgrid') {
+    return buildEiaFossilGenerationDataset()
   }
 
   throw new Error(`Unknown dataset: ${datasetId}`)

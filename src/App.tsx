@@ -85,7 +85,7 @@ const fipsToState: Record<string, { code: string; name: string }> = {
   '56': { code: 'WY', name: 'Wyoming' },
 }
 
-const dieselAreaStates: Record<string, string[]> = {
+const petroleumAreaStates: Record<string, string[]> = {
   R1X: ['CT', 'ME', 'MA', 'NH', 'RI', 'VT'],
   R1Y: ['DE', 'DC', 'MD', 'NJ', 'NY', 'PA'],
   R1Z: ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
@@ -94,6 +94,7 @@ const dieselAreaStates: Record<string, string[]> = {
   R40: ['CO', 'ID', 'MT', 'UT', 'WY'],
   R5XCA: ['AK', 'AZ', 'HI', 'NV', 'OR', 'WA'],
   R50: ['AK', 'AZ', 'CA', 'HI', 'NV', 'OR', 'WA'],
+  R10: ['CT', 'DE', 'DC', 'ME', 'MD', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT', 'AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
 }
 
 function formatValue(dataset: Dataset, value: number) {
@@ -370,22 +371,26 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
 }
 
 function areaForState(dataset: Dataset, stateCode: string, areasByCode: Map<string, RegionValue>) {
-  if (dataset.id !== 'diesel') return undefined
+  if (!dataset.areas?.length) return undefined
 
   const preferredCodes = stateCode === 'CA' ? ['R50'] : ['R1X', 'R1Y', 'R1Z', 'R20', 'R30', 'R40', 'R5XCA', 'R50', 'R10']
   return preferredCodes
-    .filter((areaCode) => dieselAreaStates[areaCode]?.includes(stateCode))
+    .filter((areaCode) => petroleumAreaStates[areaCode]?.includes(stateCode))
     .map((areaCode) => areasByCode.get(areaCode))
     .find(Boolean)
 }
 
 function mapNote(dataset: Dataset) {
   if (dataset.id === 'gas') {
-    return `EIA currently reports ${dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.`
+    return `EIA currently reports ${dataset.regions.length} state-level gasoline series plus ${dataset.areas?.length ?? 0} regional or metro series. Regional colors fill missing states only where EIA region boundaries are known.`
   }
 
   if (dataset.id === 'diesel') {
     return `EIA currently reports ${dataset.areas?.length ?? 0} regional diesel series plus ${dataset.regions.length} state-level diesel row. Regional colors are shown where state-level values are unavailable; state rows still take precedence.`
+  }
+
+  if (dataset.areas?.length) {
+    return `${dataset.source} provides ${dataset.regions.length} state-level values plus ${dataset.areas.length} regional series for this view. Regional colors fill missing states only where EIA region boundaries are known.`
   }
 
   return `${dataset.source} provides ${dataset.regions.length} state-level values for this view. Missing states are intentionally left uncolored rather than estimated.`
