@@ -348,12 +348,22 @@ function USChoropleth({ dataset }: { dataset: Dataset }) {
         <span>Higher</span>
       </div>
       <p className="map-note">
-        {dataset.id === 'gas'
-          ? `EIA currently reports ${dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.`
-          : `${dataset.source} provides ${dataset.regions.length} state-level values for this view. Missing states are intentionally left uncolored rather than estimated.`}
+        {mapNote(dataset)}
       </p>
     </div>
   )
+}
+
+function mapNote(dataset: Dataset) {
+  if (dataset.id === 'gas') {
+    return `EIA currently reports ${dataset.regions.length} state-level series for this gasoline product. Other states are intentionally left uncolored rather than estimated.`
+  }
+
+  if (dataset.id === 'diesel') {
+    return `EIA currently reports regional diesel prices plus ${dataset.regions.length} state-level diesel row. The distribution uses current reported regional and state prices; this map only colors state-level rows.`
+  }
+
+  return `${dataset.source} provides ${dataset.regions.length} state-level values for this view. Missing states are intentionally left uncolored rather than estimated.`
 }
 
 function buildCsv(dataset: Dataset) {
