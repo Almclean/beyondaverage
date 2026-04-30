@@ -372,7 +372,16 @@ function escapeCsv(value: string) {
 }
 
 function App() {
-  const [availableDatasets, setAvailableDatasets] = useState<Dataset[]>(datasets)
+  const [availableDatasets, setAvailableDatasets] = useState<Dataset[]>(() =>
+    datasets.map((dataset) =>
+      emptyDataset(
+        dataset,
+        dataset.id === 'gas'
+          ? 'Loading live gasoline data from EIA.'
+          : `${dataset.source} connector is not wired yet. No values are displayed.`,
+      ),
+    ),
+  )
   const [activeId, setActiveId] = useState(datasets[0].id)
   const [dark, setDark] = useState(true)
   const activeDataset = availableDatasets.find((dataset) => dataset.id === activeId) ?? availableDatasets[0]
@@ -386,17 +395,22 @@ function App() {
   useEffect(() => {
     let ignore = false
 
-    async function loadCachedEiaGas() {
+    function replaceDataset(nextDataset: Dataset) {
+      if (ignore) return
+      setAvailableDatasets((current) =>
+        current.map((dataset) => (dataset.id === nextDataset.id ? nextDataset : dataset)),
+      )
+    }
+
+    async function loadDataset(dataset: Dataset) {
       try {
-        const response = await fetch('/api/datasets/gas', { cache: 'no-store' })
+        const response = await fetch(`/api/datasets/${dataset.id}`, { cache: 'no-store' })
         if (!response.ok) {
-          setAvailableDatasets((current) =>
-            current.map((dataset) =>
-              dataset.id === 'gas'
-                ? {
-                    ...emptyDataset(dataset, 'EIA gasoline data is unavailable. Configure EIA_API_KEY or try again later.'),
-                  }
-                : dataset,
+          const payload = await readErrorPayload(response)
+          replaceDataset(
+            emptyDataset(
+              dataset,
+              payload?.error ?? `${dataset.source} is unavailable. No values are displayed.`,
             ),
           )
           return
@@ -404,49 +418,23 @@ function App() {
 
         const contentType = response.headers.get('content-type') ?? ''
         if (!contentType.includes('application/json')) {
-          setAvailableDatasets((current) =>
-            current.map((dataset) =>
-              dataset.id === 'gas'
-                ? {
-                    ...emptyDataset(dataset, 'The data API did not return JSON. No gasoline data is being shown.'),
-                  }
-                : dataset,
-            ),
-          )
+          replaceDataset(emptyDataset(dataset, 'The data API did not return JSON. No values are displayed.'))
           return
         }
 
-        const gasCache = (await response.json()) as Dataset
-        if (!isDatasetLike(gasCache) || ignore) {
-          setAvailableDatasets((current) =>
-            current.map((dataset) =>
-              dataset.id === 'gas'
-                ? {
-                    ...emptyDataset(dataset, 'The data API response was incomplete. No gasoline data is being shown.'),
-                  }
-                : dataset,
-            ),
-          )
+        const payload = (await response.json()) as Dataset
+        if (!isDatasetLike(payload) || ignore) {
+          replaceDataset(emptyDataset(dataset, 'The data API response was incomplete. No values are displayed.'))
           return
         }
 
-        setAvailableDatasets((current) =>
-          current.map((dataset) => (dataset.id === 'gas' ? { ...dataset, ...gasCache, isLive: true } : dataset)),
-        )
+        replaceDataset({ ...dataset, ...payload, isLive: true, unavailable: false, unavailableReason: undefined })
       } catch {
-        setAvailableDatasets((current) =>
-          current.map((dataset) =>
-            dataset.id === 'gas'
-              ? {
-                  ...emptyDataset(dataset, 'Unable to reach the local data API. No gasoline data is being shown.'),
-                }
-              : dataset,
-          ),
-        )
+        replaceDataset(emptyDataset(dataset, 'Unable to reach the local data API. No values are displayed.'))
       }
     }
 
-    void loadCachedEiaGas()
+    void Promise.all(datasets.map((dataset) => loadDataset(dataset)))
 
     return () => {
       ignore = true
@@ -488,7 +476,7 @@ function App() {
               <h2>{activeDataset.label}</h2>
             </div>
             <span className="status-pill">
-              {activeDataset.unavailable ? 'No data' : activeDataset.isLive ? 'Cached EIA' : 'Demo data'}
+              {activeDataset.unavailable ? 'No data' : activeDataset.isLive ? 'Cached source' : 'Loading'}
             </span>
           </div>
           {activeDataset.unavailable ? (
@@ -540,24 +528,29 @@ function App() {
 
         <div className="dashboard-stack">
           <section className="tool-row compact" aria-label="Dataset actions">
-            <a
-              aria-disabled={activeDataset.unavailable}
-              className={activeDataset.unavailable ? 'action-button disabled' : 'action-button'}
-              download={`honeststats-${activeDataset.id}.csv`}
-              href={activeDataset.unavailable ? undefined : csvHref}
-            >
-              <Download size={17} />
-              Download CSV
-            </a>
-            <a
-              aria-disabled={activeDataset.unavailable}
-              className={activeDataset.unavailable ? 'action-button disabled' : 'action-button'}
-              download={`honeststats-${activeDataset.id}.json`}
-              href={activeDataset.unavailable ? undefined : jsonHref}
-            >
-              <FileJson size={17} />
-              Download JSON
-            </a>
+            {activeDataset.unavailable ? (
+              <>
+                <button className="action-button disabled" type="button" disabled>
+                  <Download size={17} />
+                  Download CSV
+                </button>
+                <button className="action-button disabled" type="button" disabled>
+                  <FileJson size={17} />
+                  Download JSON
+                </button>
+              </>
+            ) : (
+              <>
+                <a className="action-button" download={`honeststats-${activeDataset.id}.csv`} href={csvHref}>
+                  <Download size={17} />
+                  Download CSV
+                </a>
+                <a className="action-button" download={`honeststats-${activeDataset.id}.json`} href={jsonHref}>
+                  <FileJson size={17} />
+                  Download JSON
+                </a>
+              </>
+            )}
           </section>
 
           {activeDataset.unavailable ? (
@@ -649,6 +642,16 @@ function isDatasetLike(value: unknown): value is Dataset {
       Array.isArray(candidate.regions) &&
       Array.isArray(candidate.trend),
   )
+}
+
+async function readErrorPayload(response: Response): Promise<{ error?: string } | null> {
+  try {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('application/json')) return null
+    return (await response.json()) as { error?: string }
+  } catch {
+    return null
+  }
 }
 
 function NoDataPanel({ reason }: { reason?: string }) {

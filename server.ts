@@ -8,6 +8,12 @@ const port = Number(process.env.PORT ?? 3000)
 const cacheTtlMs = Number(process.env.EIA_CACHE_TTL_MS ?? 6 * 60 * 60 * 1000)
 let gasCache: { expiresAt: number; payload: unknown } | null = null
 
+const pendingDatasetConnectors: Record<string, { label: string; source: string }> = {
+  income: { label: 'Household Income', source: 'Census ACS + BLS' },
+  housing: { label: 'Home Prices', source: 'Census ACS + FHFA HPI' },
+  energy: { label: 'Residential Energy', source: 'EIA Open Data API' },
+}
+
 const mimeTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -27,8 +33,14 @@ Bun.serve({
       return Response.json({ ok: true })
     }
 
-    if (url.pathname === '/api/datasets/gas') {
-      return getGasDataset()
+    if (url.pathname.startsWith('/api/datasets/')) {
+      const datasetId = url.pathname.split('/').pop() ?? ''
+
+      if (datasetId === 'gas') {
+        return getGasDataset()
+      }
+
+      return getPendingDataset(datasetId)
     }
 
     return serveStatic(url.pathname)
@@ -57,11 +69,33 @@ async function getGasDataset() {
     return Response.json(
       {
         error: message,
-        fallback: 'Demo gasoline data remains active in the browser.',
+        fallback: 'No dataset values are returned when the source is unavailable.',
       },
-      { status: 503 },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
     )
   }
+}
+
+function getPendingDataset(datasetId: string) {
+  const dataset = pendingDatasetConnectors[datasetId]
+
+  if (!dataset) {
+    return Response.json(
+      { error: `Unknown dataset: ${datasetId}` },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
+  return Response.json(
+    {
+      id: datasetId,
+      label: dataset.label,
+      source: dataset.source,
+      status: 'not_implemented',
+      error: `${dataset.label} is not wired to ${dataset.source} yet. No values are displayed until the official source connector is implemented.`,
+    },
+    { status: 501, headers: { 'Cache-Control': 'no-store' } },
+  )
 }
 
 async function serveStatic(pathname: string) {
