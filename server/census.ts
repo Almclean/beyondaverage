@@ -117,11 +117,9 @@ const housingBins = [
 
 export async function buildCensusDataset(id: CensusDatasetId): Promise<Dataset> {
   const config = id === 'income' ? incomeConfig() : housingConfig()
-  const [national, states, trend] = await Promise.all([
-    fetchCensusRows(acsYear, config.variables, 'us:*'),
-    fetchCensusRows(acsYear, [config.medianVariable], 'state:*'),
-    buildTrend(config),
-  ])
+  const national = await fetchCensusRows(acsYear, config.variables, 'us:*')
+  const states = await fetchCensusRows(acsYear, [config.medianVariable], 'state:*')
+  const trend = await buildTrend(config)
   const nationalRow = national[0]
 
   if (!nationalRow) {
@@ -207,9 +205,11 @@ function housingConfig() {
 }
 
 async function buildTrend(config: ReturnType<typeof incomeConfig> | ReturnType<typeof housingConfig>): Promise<TrendPoint[]> {
-  const years = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
-  const rows = await Promise.all(
-    years.map(async (year) => {
+  const years = [2020, 2021, 2022, 2023, 2024]
+  const rows: TrendPoint[] = []
+
+  for (const year of years) {
+    try {
       const [row] = await fetchCensusRows(year, config.variables, 'us:*')
       const bins = config.bins.map(([variable, label, low, high]) => ({
         label,
@@ -218,13 +218,15 @@ async function buildTrend(config: ReturnType<typeof incomeConfig> | ReturnType<t
         count: numberFrom(row?.[variable]),
       }))
 
-      return {
+      rows.push({
         month: String(year),
         mean: round(weightedMean(bins), config.precision),
         median: round(numberFrom(row?.[config.medianVariable]), config.precision),
-      }
-    }),
-  )
+      })
+    } catch {
+      continue
+    }
+  }
 
   return rows.filter((row) => Number.isFinite(row.mean) && Number.isFinite(row.median) && row.median > 0)
 }
@@ -234,13 +236,25 @@ async function fetchCensusRows(year: number, variables: readonly string[], geogr
   endpoint.searchParams.set('get', ['NAME', ...variables].join(','))
   endpoint.searchParams.set('for', geography)
 
-  const response = await fetch(endpoint)
+  const response = await fetchWithTimeout(endpoint)
   if (!response.ok) {
-    throw new Error(`Census request failed: ${response.status} ${response.statusText}`)
+    const body = await response.text()
+    throw new Error(`Census request failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ''}`)
   }
 
   const [header, ...rows] = (await response.json()) as string[][]
   return rows.map((row) => Object.fromEntries(header.map((key, index) => [key, row[index] ?? ''])))
+}
+
+async function fetchWithTimeout(url: URL) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12_000)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function numberFrom(value: string | undefined) {
